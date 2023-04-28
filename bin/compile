@@ -22,7 +22,9 @@ BPLOG_PREFIX="buildpack.nodejs"
 
 ### Configure directories
 
-BUILD_DIR=${1:-}
+# Custom stuff: PROJECT_DIR will point to the workspace dir, but we need to use the root as build_dir
+# because scalingo assumes we're at the project root, and a lot of checks fail if we don't
+BUILD_DIR=${1:-}/..
 CACHE_DIR=${2:-}
 ENV_DIR=${3:-}
 BP_DIR=$(cd "$(dirname "${0:-}")"; cd ..; pwd)
@@ -137,8 +139,8 @@ log_project_info "$BUILD_DIR"
 ### Compile
 
 create_env() {
-  write_profile "$BP_DIR" "$BUILD_DIR"
-  write_export "$BP_DIR" "$BUILD_DIR"
+  write_profile "$BP_DIR" "$BUILD_DIR/$PROJECT_DIR"
+  write_export "$BP_DIR" "$BUILD_DIR/$PROJECT_DIR"
   export_env_dir "$ENV_DIR"
   create_default_env "$YARN"
 }
@@ -438,10 +440,16 @@ meta_time "build-time" "$build_start_time"
 if test -n "$meteor_version" ; then
   rm -r "$BUILD_DIR/node_modules"
 else
-  warn_no_start "$BUILD_DIR"
+  warn_no_start "$BUILD_DIR/$PROJECT_DIR"
   warn_unmet_dep "$LOG_FILE"
 fi
 warn_old_npm_lockfile $NPM_LOCK
+
+# Move node and yarn to the PROJECT_DIR as this is what will be shipped to the container
+mv "$BUILD_DIR/.scalingo" "$BUILD_DIR/$PROJECT_DIR/.scalingo"
+mkdir -p "$BUILD_DIR/$PROJECT_DIR/node_modules"
+rsync --recursive -a $BUILD_DIR/node_modules/ $BUILD_DIR/$PROJECT_DIR/node_modules/
+export PATH="$BUILD_DIR/$PROJECT_DIR/.scalingo/node/bin:$BUILD_DIR/$PROJECT_DIR/.scalingo/yarn/bin":$PATH
 
 meta_set "build-step" "finished"
 log_meta_data >> "$BUILDPACK_LOG_FILE"
